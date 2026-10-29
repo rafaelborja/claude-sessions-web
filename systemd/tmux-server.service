@@ -1,0 +1,15 @@
+# The tmux server that holds every claude@<name> session. It runs in its own unit so that
+# stopping or restarting one claude@ unit never kills the others. `tmux -D` = foreground server
+# (and exit-empty off, so it stays up with no sessions).
+[Unit]
+Description=tmux server for Claude sessions
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/tmux -D
+ExecStop=/usr/bin/tmux kill-server
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

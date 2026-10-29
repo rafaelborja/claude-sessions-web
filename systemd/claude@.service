@@ -1,0 +1,20 @@
+# One long-running Claude Code session: `systemctl --user enable --now claude@<name>`.
+# The tmux server lives in tmux-server.service; this unit only creates/kills session claude-<name>.
+# Attach: `tmux attach -t claude-<name>` (detach Ctrl-b d).
+# Settings per session in ~/.config/claude-sessions/<name>.env (+ optional <name>.prompt),
+# read by ~/.local/bin/claude-session, which continues the last conversation after a restart.
+[Unit]
+Description=Claude Code session %i (tmux claude-%i)
+Requires=tmux-server.service
+After=tmux-server.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/sleep 1
+ExecStart=/usr/bin/tmux new-session -d -s claude-%i -c %h "%h/.local/bin/claude-session %i"
+ExecStop=-/usr/bin/tmux kill-session -t claude-%i
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Start (or continue) the long-running Claude session <name>; run by claude@<name>.service in tmux.
+# ~/.config/claude-sessions/<name>.env    CLAUDE_CWD (default ~/work/<name>), CLAUDE_ARGS,
+#   CLAUDE_NAME (display name; default linux-<name>), CLAUDE_GROUP, secrets
+# ~/.config/claude-sessions/<name>.prompt optional next prompt: used once, then renamed .prompt.used
+# ~/.config/claude-sessions/<name>.sid    the session's CURRENT conversation id. The home-config
+#   SessionStart hook rewrites it at every start / resume / /clear (it sees CLAUDE_SESSION_NAME), so a
+#   restart reopens exactly that conversation with --resume <id> — never "the latest one in the folder".
+# No .sid yet (or its transcript is gone): adopt the newest conversation in the folder (e.g. one copied
+# in by move-session-to-linux.sh); none at all: start a new conversation with a fixed --session-id.
+name="${1:?usage: claude-session <name>}"
+dir="${CLAUDE_SESSIONS_DIR:-$HOME/.config/claude-sessions}"
+if [ -f "$dir/$name.env" ]; then set -a; . "$dir/$name.env"; set +a; fi
+export CLAUDE_SESSION_NAME="$name"
+cwd="${CLAUDE_CWD:-$HOME/work/$name}"
+mkdir -p "$cwd" && cd "$cwd" || exit 1
+read -r -a args <<< "${CLAUDE_ARGS:-}"
+args+=(--name "${CLAUDE_NAME:-linux-$name}")
+proj="$HOME/.claude/projects/$(printf %s "$cwd" | sed "s/[^A-Za-z0-9]/-/g")"
+sidf="$dir/$name.sid"
+sid=""
+[ -f "$sidf" ] && sid="$(tr -dc 'a-f0-9-' < "$sidf")"
+if [ -z "$sid" ] || [ ! -f "$proj/$sid.jsonl" ]; then
+  latest="$(ls -t "$proj"/*.jsonl 2>/dev/null | head -1)"
+  sid="${latest:+$(basename "$latest" .jsonl)}"
+  [ -n "$sid" ] && ( umask 077; printf '%s\n' "$sid" > "$sidf" )
+fi
+prompt=()
+if [ -f "$dir/$name.prompt" ]; then
+  prompt=("$(cat "$dir/$name.prompt")")
+  mv "$dir/$name.prompt" "$dir/$name.prompt.used"
+fi
+if [ -n "$sid" ]; then
+  exec claude "${args[@]}" --resume "$sid" "${prompt[@]}"
+fi
+new="$(cat /proc/sys/kernel/random/uuid)"
+( umask 077; printf '%s\n' "$new" > "$sidf" )
+exec claude "${args[@]}" --session-id "$new" "${prompt[@]}"

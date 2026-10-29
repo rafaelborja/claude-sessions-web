@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# List the running claude@<name> tmux sessions as "<name><TAB><display name><TAB><group><TAB><winstart>".
+# display = CLAUDE_NAME (default linux-<name>), group = CLAUDE_GROUP (default general), winstart =
+# CLAUDE_WINSTART (1 = open at client login, default 1), all from ~/.config/claude-sessions/<name>.env.
+# Meant for a client-side script that opens one terminal tab per session (see README.md).
+val() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "${CLAUDE_SESSIONS_DIR:-$HOME/.config/claude-sessions}/$2.env" 2>/dev/null | tail -1; }
+for s in $(tmux ls -F '#{session_name}' 2>/dev/null | grep '^claude-'); do
+  n="${s#claude-}"; d="$(val CLAUDE_NAME "$n")"; g="$(val CLAUDE_GROUP "$n")"; w="$(val CLAUDE_WINSTART "$n")"
+  printf '%s\t%s\t%s\t%s\n' "$n" "${d:-linux-$n}" "${g:-general}" "${w:-1}"
+done

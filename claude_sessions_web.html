@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Sessions</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--fg:#1d1d1b;--muted:#6b6b66;--line:#e3e2dc;--accent:#c96442;
+  --ok:#2f7d4f;--off:#9a9a93;--warn:#b5522f;--hl:#fff1b8;--chip:#efeee9}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1b19;--panel:#242422;--fg:#ecebe6;--muted:#a3a29b;
+  --line:#3a3a36;--accent:#e08a6a;--ok:#6cc38f;--off:#77776f;--warn:#ef8a66;--hl:#5a4d16;--chip:#30302d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:2}
+h1{font-size:17px;margin:0 12px 0 0}
+h2{font-size:15px;margin:22px 0 8px}
+main{padding:0 16px 40px;max-width:1800px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+body.has-hits main{grid-template-columns:minmax(0,1fr) minmax(320px,38%)}
+aside{display:none;position:sticky;top:var(--hdr,64px);align-self:start;max-height:calc(100vh - var(--hdr,64px) - 12px);overflow-y:auto;padding-top:12px}
+body.has-hits aside{display:block}
+.asidehead{display:flex;gap:8px;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg);padding:4px 0}
+#qform{display:flex;gap:6px;flex:2;min-width:240px}
+input[type=text],input[type=search],select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+button{font:inherit;color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.danger{color:var(--warn)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+.muted{color:var(--muted)}
+.wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--panel)}
+tr.hit td{background:var(--hl)}
+td.edit input{width:100%;min-width:140px;background:transparent;border-color:transparent}
+td.edit input:focus,td.edit input:hover{border-color:var(--line);background:var(--bg)}
+td.grp input{min-width:90px;width:110px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--off)}
+.dot.on{background:var(--ok)}
+code{font:12px ui-monospace,Consolas,monospace}
+.sid{cursor:copy}
+#toast{position:fixed;right:16px;bottom:16px;max-width:520px;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:10px 12px;box-shadow:0 4px 18px #0003;display:none;white-space:pre-wrap;z-index:5}
+.hitcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}
+.snip{margin:6px 0 0;padding-left:10px;border-left:3px solid var(--line);white-space:normal;word-break:break-word}
+mark{background:var(--hl);color:inherit}
+@media (max-width:900px){header{position:static}body.has-hits main{grid-template-columns:minmax(0,1fr)}aside{position:static;max-height:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Claude sessions <span id="host" class="muted" style="font-weight:400"></span></h1>
+  <form id="qform" onsubmit="search();return false">
+    <input id="q" type="search" placeholder='Search conversations: words, "exact phrase" or /regex/' style="flex:1;min-width:0">
+    <button>Search</button></form>
+  <input id="filter" type="search" placeholder="Filter table by name, group, id…" style="flex:1;min-width:160px">
+  <button onclick="load()">Reload</button>
+  <span id="idx" class="muted" style="font-size:12px"></span>
+</header>
+<main>
+ <section>
+  <div class="bar" id="bulk">
+    <span class="muted"><span id="selcount">0</span> selected:</span>
+    <button onclick="bulk('winstart',true)">Startup tab on</button>
+    <button onclick="bulk('winstart',false)">Startup tab off</button>
+    <button onclick="bulk('keep',true)">Keep running</button>
+    <button onclick="bulk('keep',false)" class="danger">Don't keep (stops)</button>
+    <button onclick="bulk('restart')">Start / restart</button>
+    <button onclick="bulk('stop')" class="danger">Stop</button>
+    <button onclick="bulkGroup()">Set group…</button>
+    <button onclick="bulk('archive')" class="danger">Archive</button>
+  </div>
+  <div class="wrap"><table id="t">
+    <thead><tr><th><input type="checkbox" id="all" title="select all shown"></th><th>Session</th><th>Display name</th><th>Group</th>
+      <th>State</th><th title="systemd enabled: started at boot">Keep running</th><th title="opened as a terminal tab by a client login script (see README)">Startup tab</th>
+      <th>Conversation id</th><th>Last activity</th><th></th></tr></thead>
+    <tbody></tbody></table></div>
+  <p class="muted">Display name and group take effect in Claude after the session's next restart, and in terminal tabs the next time they open.
+    Attach from a shell on this machine: <code>tmux attach -t claude-&lt;name&gt;</code> (detach: Ctrl-b d).</p>
+
+  <h2>Archived</h2>
+  <div class="wrap"><table id="arch"><thead><tr><th>Session</th><th>Display name</th><th>Group</th><th>Conversation id</th><th>Archived</th><th></th></tr></thead><tbody></tbody></table></div>
+
+ </section>
+ <aside>
+  <div class="asidehead"><b id="hitstitle">Results</b><button onclick="clearHits()">Close</button></div>
+  <div id="hits"></div>
+ </aside>
+</main>
+<div id="toast"></div>
+<datalist id="groups"></datalist>
+<script>
+let data={sessions:[],archived:[]}, sel=new Set(), hitSids=new Set();
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ago=t=>{if(!t)return'';const s=(Date.now()/1000-t);return s<90?'now':s<5400?Math.round(s/60)+' min':s<129600?Math.round(s/3600)+' h':Math.round(s/86400)+' d'};
+function toast(msg){const t=$('#toast');t.textContent=msg;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',6000)}
+async function api(action,names,value){
+  const r=await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json','X-Claude-Sessions':'1'},body:JSON.stringify({action,names,value})});
+  const j=await r.json(); toast((j.results||[]).map(x=>(x.ok?'✓ ':'✗ ')+x.name+': '+x.message).join('\n')||j.error); await load(); return j}
+async function load(){
+  data=await (await fetch('/api/sessions')).json();
+  const groups=[...new Set(data.sessions.map(s=>s.group))].sort();
+  $('#groups').innerHTML=groups.map(g=>`<option value="${esc(g)}">`).join('');
+  $('#host').textContent=data.host||''; render(); idx(data.index)}
+function idx(i){$('#idx').textContent=i?`index: ${i.conversations} conversations${i.busy?' (updating…)':''}${i.updated?', updated '+ago(i.updated)+(ago(i.updated)==='now'?'':' ago'):''}`:''}
+function shown(){const f=$('#filter').value.toLowerCase().trim();
+  return data.sessions.filter(s=>!f||[s.name,s.display,s.group,s.sid,s.bridge].join(' ').toLowerCase().includes(f))}
+function render(){
+  const rows=shown();
+  $('#t tbody').innerHTML=rows.map(s=>`<tr class="${hitSids.has(s.sid)?'hit':''}">
+    <td><input type="checkbox" data-n="${esc(s.name)}" ${sel.has(s.name)?'checked':''}></td>
+    <td><b>${esc(s.name)}</b>${s.chrome?' <span class="muted" title="started with --chrome">⌘</span>':''}</td>
+    <td class="edit"><input type="text" value="${esc(s.display)}" data-n="${esc(s.name)}" data-k="display"></td>
+    <td class="edit grp"><input type="text" list="groups" value="${esc(s.group)}" data-n="${esc(s.name)}" data-k="group"></td>
+    <td><span class="dot ${s.running?'on':''}"></span>${s.running?'running':'stopped'}</td>
+    <td><input type="checkbox" data-n="${esc(s.name)}" data-k="keep" ${s.keep?'checked':''}></td>
+    <td><input type="checkbox" data-n="${esc(s.name)}" data-k="winstart" ${s.winstart?'checked':''}></td>
+    <td><code class="sid" title="click to copy${s.bridge?'\nRemote Control: '+esc(s.bridge):''}">${esc(s.sid)}</code></td>
+    <td class="muted">${ago(s.last)}</td>
+    <td>${s.running?`<button data-a="restart" data-n="${esc(s.name)}">Restart</button> <button class="danger" data-a="stop" data-n="${esc(s.name)}">Stop</button>`
+                    :`<button data-a="start" data-n="${esc(s.name)}">Start</button>`}
+        <button class="danger" data-a="archive" data-n="${esc(s.name)}">Archive</button></td></tr>`).join('');
+  $('#arch tbody').innerHTML=data.archived.map(s=>`<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.display)}</td><td>${esc(s.group)}</td>
+    <td><code class="sid">${esc(s.sid)}</code></td><td class="muted">${esc(s.archived.slice(-15))}</td>
+    <td><button data-restore="${esc(s.archived)}" data-n="${esc(s.name)}">Restore</button></td></tr>`).join('')
+    || '<tr><td colspan="6" class="muted">none</td></tr>';
+  $('#selcount').textContent=sel.size; $('#all').checked=rows.length&&rows.every(s=>sel.has(s.name))}
+// Ask before anything that stops a running session (stop, archive, restart, "don't keep running").
+function confirmStop(action,names,value){
+  if(action==='archive') return confirm(`Archive ${names.join(', ')}?\nStops them; config goes to ~/.config/claude-sessions/deleted/, the conversations are kept.`);
+  if(!(action==='stop'||action==='restart'||(action==='keep'&&!value))) return true;
+  const run=data.sessions.filter(s=>names.includes(s.name)&&s.running).map(s=>s.name);
+  return !run.length||confirm(`This ${action==='restart'?'restarts':'stops'} ${run.join(', ')} now. Continue?`)}
+async function bulk(action,value){const names=[...sel]; if(!names.length) return toast('select sessions first');
+  if(confirmStop(action,names,value)) await api(action,names,value)}
+async function bulkGroup(){const names=[...sel]; if(!names.length) return toast('select sessions first');
+  const g=prompt('Group for '+names.join(', ')); if(g) await api('group',names,g.trim())}
+document.addEventListener('change',async e=>{const el=e.target, n=el.dataset.n, k=el.dataset.k;
+  if(el.id==='all'){shown().forEach(s=>el.checked?sel.add(s.name):sel.delete(s.name)); return render()}
+  if(!n) return;
+  if(!k){el.checked?sel.add(n):sel.delete(n); $('#selcount').textContent=sel.size; return}
+  if(k==='keep'&&!confirmStop('keep',[n],el.checked)){el.checked=true;return}
+  if(k==='keep'||k==='winstart') return api(k,[n],el.checked);
+  if(k==='display'||k==='group') return api(k,[n],el.value.trim())});
+document.addEventListener('click',async e=>{const el=e.target;
+  if(el.classList.contains('sid')&&el.textContent){navigator.clipboard?.writeText(el.textContent).then(()=>toast('copied '+el.textContent),()=>{});return}
+  if(el.dataset.restore) return api('restore',[el.dataset.n],el.dataset.restore);
+  if(el.dataset.a){const a=el.dataset.a,n=el.dataset.n; if(confirmStop(a,[n])) return api(a,[n])}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset?.k&&e.target.type==='text') e.target.blur()});
+$('#filter').addEventListener('input',render);
+async function search(){const q=$('#q').value.trim(); if(!q) return;
+  document.body.classList.add('has-hits'); $('#hitstitle').textContent='Results for '+q;
+  $('#hits').innerHTML='<p class="muted">searching…</p>';
+  const j=await (await fetch('/api/search?q='+encodeURIComponent(q))).json(); idx(j.index);
+  if(j.error){$('#hits').innerHTML=`<p class="muted">${esc(j.error)}</p>`;return}
+  // the server sends match positions, so highlighting is right for words, phrases and /regex/
+  const mark=s=>{let h='',k=0; for(const [a,b] of s.marks||[]){if(a<k)continue; h+=esc(s.text.slice(k,a))+'<mark>'+esc(s.text.slice(a,b))+'</mark>'; k=b}
+    return (s.pre?'…':'')+h+esc(s.text.slice(k))+(s.post?'…':'')};
+  hitSids=new Set(j.hits.map(h=>h.sid)); render();
+  $('#hits').innerHTML=j.hits.length?j.hits.map(h=>`<div class="hitcard">
+     <b>${esc(h.session||h.folder)}</b> ${h.title?`<span class="muted">· ${esc(h.title)}</span>`:''}
+     · <code class="sid">${esc(h.sid)}</code> <span class="muted">· ${h.count} match${h.count>1?'es':''} · last ${esc((h.last||'').slice(0,16).replace('T',' '))}</span>
+     ${h.snippets.map(s=>`<div class="snip"><span class="muted">${esc(s.ts.slice(0,16).replace('T',' '))} ${esc(s.role)}:</span> ${mark(s)}</div>`).join('')}
+   </div>`).join(''):'<p class="muted">no match</p>'}
+function clearHits(){document.body.classList.remove('has-hits');hitSids=new Set();$('#q').value='';render()}
+function hdr(){document.documentElement.style.setProperty('--hdr',document.querySelector('header').offsetHeight+'px')}
+addEventListener('resize',hdr); hdr();
+load(); setInterval(()=>{if(!document.querySelector('input:focus'))load()},30000);
+</script>
+</body>
+</html>

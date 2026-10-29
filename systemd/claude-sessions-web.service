@@ -1,0 +1,14 @@
+# The web page. Edit --host / --port (and the paths, if yours differ) before enabling:
+#   systemctl --user enable --now claude-sessions-web
+[Unit]
+Description=claude-sessions-web (web page for the claude@<name> sessions)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/share/claude-sessions-web/claude_sessions_web.py --host 127.0.0.1 --port 8190
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=default.target
