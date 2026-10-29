@@ -19,7 +19,12 @@ body.has-hits main{grid-template-columns:minmax(0,1fr) minmax(320px,38%)}
 aside{display:none;position:sticky;top:var(--hdr,64px);align-self:start;max-height:calc(100vh - var(--hdr,64px) - 12px);overflow-y:auto;padding-top:12px}
 body.has-hits aside{display:block}
 .asidehead{display:flex;gap:8px;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg);padding:4px 0}
-#qform{display:flex;gap:6px;flex:2;min-width:240px}
+#qform{display:flex;gap:6px;flex:2;min-width:240px;position:relative}
+#qtip{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:4;width:min(560px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;box-shadow:0 6px 22px #0003;font-size:13px}
+#qtip.open{display:block}
+#qtip table{width:auto}#qtip td{padding:3px 10px 3px 0;border:0;white-space:normal}
+#qtip code{background:var(--chip);padding:1px 4px;border-radius:4px}
+#qtip a{color:var(--accent)}
 input[type=text],input[type=search],select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
 button{font:inherit;color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
 button:hover{border-color:var(--accent)}
@@ -49,8 +54,23 @@ mark{background:var(--hl);color:inherit}
 <header>
   <h1>Claude sessions <span id="host" class="muted" style="font-weight:400"></span></h1>
   <form id="qform" onsubmit="search();return false">
-    <input id="q" type="search" placeholder='Search conversations: words, "exact phrase" or /regex/' style="flex:1;min-width:0">
-    <button>Search</button></form>
+    <input id="q" type="search" placeholder='Search conversations: words, "exact phrase" or /regex/  (? = help)' style="flex:1;min-width:0">
+    <button>Search</button>
+    <button type="button" title="How to search" aria-expanded="false" onclick="const o=$('#qtip').classList.toggle('open');this.setAttribute('aria-expanded',o)">?</button>
+    <div id="qtip" role="note">
+      <b>Search the conversations</b> (your messages and Claude's; not tool output)
+      <table>
+        <tr><td><code>deploy staging</code></td><td>both words in the same message, any order; case and partial words ignored</td></tr>
+        <tr><td><code>"exact phrase"</code></td><td>the phrase as written</td></tr>
+        <tr><td><code>/carri?er.{0,30}2026/</code></td><td>regular expression, case-insensitive</td></tr>
+        <tr><td><code>/(foo|bar)/</code></td><td>either word</td></tr>
+        <tr><td><code>/\b\d{6,}\b/</code></td><td>numbers with 6+ digits</td></tr>
+        <tr><td><code>/TODO/c</code></td><td>trailing <code>c</code> = case-sensitive</td></tr>
+      </table>
+      Regex syntax is Python's <code>re</code>: <a href="https://docs.python.org/3/library/re.html#regular-expression-syntax" target="_blank" rel="noopener">reference</a> ·
+      <a href="https://docs.python.org/3/howto/regex.html" target="_blank" rel="noopener">how-to</a>.
+      Line breaks inside a message read as <code>⏎</code>. Up to 60 conversations, newest first.
+    </div></form>
   <input id="filter" type="search" placeholder="Filter table by name, group, id…" style="flex:1;min-width:160px">
   <button onclick="load()">Reload</button>
   <span id="idx" class="muted" style="font-size:12px"></span>
@@ -145,6 +165,8 @@ document.addEventListener('click',async e=>{const el=e.target;
   if(el.classList.contains('sid')&&el.textContent){navigator.clipboard?.writeText(el.textContent).then(()=>toast('copied '+el.textContent),()=>{});return}
   if(el.dataset.restore) return api('restore',[el.dataset.n],el.dataset.restore);
   if(el.dataset.a){const a=el.dataset.a,n=el.dataset.n; if(confirmStop(a,[n])) return api(a,[n])}});
+document.addEventListener('click',e=>{if(!e.target.closest('#qform'))$('#qtip').classList.remove('open')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#qtip').classList.remove('open')});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset?.k&&e.target.type==='text') e.target.blur()});
 $('#filter').addEventListener('input',render);
 async function search(){const q=$('#q').value.trim(); if(!q) return;
